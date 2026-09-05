@@ -1,0 +1,648 @@
+<!DOCTYPE html>
+<html lang="ja">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0, maximum-scale=1.0, user-scalable=no, viewport-fit=cover">
+<meta name="theme-color" content="#0b0f1a">
+<title>スワイプ反射 - 飛んでくるやつを斬れ</title>
+<meta name="description" content="飛んでくるマトの矢印の方向にスワイプ！反射神経をS/A/B/Cでランク判定。スマホでどうぞ。">
+<style>
+  :root{
+    --bg:#0b0f1a; --fg:#f5f7ff; --sub:#9aa3b8;
+    --up:#ff4d6d; --down:#4dd2ff; --left:#ffd84d; --right:#7dff7a;
+    --accent:#ff4d6d;
+  }
+  *{box-sizing:border-box;-webkit-tap-highlight-color:transparent;}
+  html,body{margin:0;height:100%;background:var(--bg);color:var(--fg);
+    font-family:-apple-system,BlinkMacSystemFont,"Helvetica Neue","Hiragino Sans","Noto Sans JP",sans-serif;
+    overflow:hidden;overscroll-behavior:none;touch-action:none;user-select:none;-webkit-user-select:none;}
+  #game{position:fixed;inset:0;display:block;}
+  .screen{position:fixed;inset:0;display:flex;flex-direction:column;align-items:center;justify-content:center;
+    text-align:center;padding:24px;padding-top:calc(24px + env(safe-area-inset-top));padding-bottom:calc(24px + env(safe-area-inset-bottom));
+    background:rgba(11,15,26,.78);z-index:10;}
+  .screen[hidden]{display:none;}
+  h1{font-size:clamp(34px,10vw,56px);margin:0 0 6px;letter-spacing:.02em;line-height:1.1;}
+  h1 span{color:var(--accent);}
+  .tag{color:var(--sub);font-size:15px;margin:0 0 26px;line-height:1.6;}
+  .howto{display:grid;grid-template-columns:repeat(4,1fr);gap:10px;width:min(340px,100%);margin:0 0 28px;}
+  .howto div{background:#161c2e;border-radius:14px;padding:12px 4px;font-size:13px;color:var(--sub);}
+  .howto b{display:block;font-size:30px;line-height:1;margin-bottom:6px;}
+  .btn{appearance:none;border:0;border-radius:999px;padding:18px 46px;font-size:20px;font-weight:700;
+    background:var(--accent);color:#fff;box-shadow:0 8px 28px rgba(255,77,109,.45);cursor:pointer;}
+  .btn:active{transform:scale(.96);}
+  .btn.ghost{background:#1c2338;box-shadow:none;font-size:16px;padding:14px 28px;color:var(--fg);}
+  .row{display:flex;gap:10px;flex-wrap:wrap;justify-content:center;margin-top:14px;}
+  .best{margin-top:22px;color:var(--sub);font-size:14px;}
+  #hud{position:fixed;top:0;left:0;right:0;padding:calc(14px + env(safe-area-inset-top)) 18px 0;
+    display:flex;justify-content:space-between;align-items:flex-start;pointer-events:none;z-index:5;
+    font-weight:700;font-variant-numeric:tabular-nums;}
+  #hud[hidden]{display:none;}
+  #score{font-size:34px;line-height:1;}
+  #score small{display:block;font-size:12px;color:var(--sub);font-weight:400;margin-top:4px;}
+  #lives{font-size:22px;letter-spacing:2px;}
+  #combo{position:fixed;left:0;right:0;top:34%;text-align:center;font-size:44px;font-weight:900;
+    pointer-events:none;z-index:6;opacity:0;transition:opacity .15s,transform .15s;transform:scale(.7);
+    text-shadow:0 0 18px rgba(255,255,255,.35);}
+  #combo.show{opacity:1;transform:scale(var(--cs,1));}
+  #muteBtn{position:fixed;right:14px;bottom:calc(14px + env(safe-area-inset-bottom));z-index:30;
+    width:46px;height:46px;border-radius:50%;border:0;background:#1c2338;color:#fff;font-size:20px;cursor:pointer;}
+  #tierBanner{position:fixed;left:0;right:0;top:22%;text-align:center;font-size:clamp(40px,14vw,72px);font-weight:900;
+    letter-spacing:.08em;pointer-events:none;z-index:6;opacity:0;transform:scale(2);transition:opacity .25s,transform .25s;
+    text-shadow:0 0 30px currentColor;}
+  #tierBanner.show{opacity:1;transform:scale(1);}
+  #tierBanner small{display:block;font-size:16px;letter-spacing:.2em;opacity:.85;}
+  @keyframes pulse{from{box-shadow:inset 0 0 0 0 var(--glow)}to{box-shadow:inset 0 0 90px 0 var(--glow)}}
+  #vignette{position:fixed;inset:0;pointer-events:none;z-index:4;box-shadow:inset 0 0 0 0 var(--glow);transition:box-shadow .3s;}
+  body.fever #vignette{animation:pulse .45s infinite alternate;}
+  /* 結果 */
+  .rank{font-size:clamp(96px,32vw,150px);font-weight:900;line-height:1;margin:0;
+    background:linear-gradient(180deg,#fff,#ffd84d);-webkit-background-clip:text;background-clip:text;color:transparent;}
+  .rank.S{background:linear-gradient(180deg,#fff6a8,#ff8c42);-webkit-background-clip:text;background-clip:text;}
+  .rank.A{background:linear-gradient(180deg,#ffd2dc,#ff4d6d);-webkit-background-clip:text;background-clip:text;}
+  .rank.B{background:linear-gradient(180deg,#d4f4ff,#4dd2ff);-webkit-background-clip:text;background-clip:text;}
+  .rank.C{background:linear-gradient(180deg,#e6e6e6,#9aa3b8);-webkit-background-clip:text;background-clip:text;}
+  .rank.D{background:linear-gradient(180deg,#bbb,#666);-webkit-background-clip:text;background-clip:text;}
+  .comment{font-size:20px;font-weight:700;margin:6px 0 18px;}
+  .stats{display:grid;grid-template-columns:1fr 1fr 1fr;gap:8px;width:min(360px,100%);margin-bottom:8px;}
+  .stats div{background:#161c2e;border-radius:14px;padding:12px 6px;}
+  .stats b{display:block;font-size:26px;}
+  .stats span{font-size:12px;color:var(--sub);}
+  .newbest{color:var(--left);font-weight:900;font-size:18px;margin:8px 0 0;animation:pop .5s;}
+  @keyframes pop{0%{transform:scale(.6);opacity:0}60%{transform:scale(1.15)}100%{transform:scale(1);opacity:1}}
+  .toast{position:fixed;bottom:calc(30px + env(safe-area-inset-bottom));left:50%;transform:translateX(-50%);
+    background:#fff;color:#0b0f1a;padding:10px 18px;border-radius:999px;font-weight:700;font-size:14px;z-index:20;
+    opacity:0;transition:opacity .2s;pointer-events:none;}
+  .toast.show{opacity:1;}
+  .foot{position:fixed;bottom:calc(10px + env(safe-area-inset-bottom));left:0;right:0;text-align:center;
+    font-size:11px;color:#5b647a;pointer-events:none;}
+</style>
+</head>
+<body>
+<canvas id="game"></canvas>
+<div id="vignette"></div>
+
+<div id="hud" hidden>
+  <div id="score">0<small>SCORE</small></div>
+  <div id="lives">♥♥♥</div>
+</div>
+<button id="muteBtn" aria-label="音の切り替え">🔊</button>
+<div id="tierBanner"></div>
+<div id="combo"></div>
+
+<!-- タイトル -->
+<div class="screen" id="title">
+  <h1>スワイプ<span>反射</span></h1>
+  <p class="tag">飛んでくるマトの<b>矢印の方向</b>にスワイプ！<br>真ん中まで来たらライフが減るよ<br><b style="color:var(--left)">10コンボごとにFEVER</b>でスコア倍率アップ</p>
+  <div class="howto">
+    <div><b style="color:var(--up)">↑</b>上スワイプ</div>
+    <div><b style="color:var(--down)">↓</b>下スワイプ</div>
+    <div><b style="color:var(--left)">←</b>左スワイプ</div>
+    <div><b style="color:var(--right)">→</b>右スワイプ</div>
+  </div>
+  <button class="btn" id="startBtn">スタート</button>
+  <div class="best" id="titleBest"></div>
+  <div class="foot">画面のどこをスワイプしてもOK</div>
+</div>
+
+<!-- 結果 -->
+<div class="screen" id="result" hidden>
+  <p class="rank" id="rank">S</p>
+  <p class="comment" id="comment"></p>
+  <div class="stats">
+    <div><b id="rScore">0</b><span>スコア</span></div>
+    <div><b id="rHits">0</b><span>斬った数</span></div>
+    <div><b id="rCombo">0</b><span>最大コンボ</span></div>
+  </div>
+  <p class="newbest" id="newBest" hidden>🎉 自己ベスト更新！</p>
+  <div class="best" id="resultBest"></div>
+  <div class="row">
+    <button class="btn" id="retryBtn">もう一回</button>
+  </div>
+  <div class="row">
+    <button class="btn ghost" id="shareBtn">結果をシェア</button>
+    <button class="btn ghost" id="xBtn">Xに投稿</button>
+  </div>
+</div>
+
+<div class="toast" id="toast"></div>
+
+<script>
+(() => {
+  // ====== 設定（ここをいじると難易度が変わる） ======
+  const CFG = {
+    lives: 3,
+    baseSpeed: 170,        // 最初のスピード（px/秒）
+    speedGain: 4.2,        // 1回斬るごとに増えるスピード
+    baseInterval: 1.15,    // 最初の出現間隔（秒）
+    minInterval: 0.42,     // 一番速いときの出現間隔
+    intervalGain: 0.02,    // 1回斬るごとに縮む間隔
+    swipeMin: 28,          // これ以上動かしたらスワイプ扱い（px）
+    tierSize: 10,          // 何コンボごとにレベル（FEVER段階）が上がるか
+    ranks: [               // スコアで判定（Sはかなり厳しめ）
+      { min: 400, r: "S", c: "反応速度、人間やめてる。" },
+      { min: 200, r: "A", c: "かなり速い。友達に自慢していい。" },
+      { min: 90,  r: "B", c: "まあまあ。もう一回で伸びる。" },
+      { min: 30,  r: "C", c: "寝起き？もう一回。" },
+      { min: 0,   r: "D", c: "スワイプの向き、逆だったかも。" },
+    ],
+  };
+  // コンボ段階ごとの見た目（10コンボごとに次へ）
+  const TIERS = [
+    { name: "",           bg: "#0b0f1a", glow: "rgba(0,0,0,0)",        text: "#ffffff" },
+    { name: "FEVER",      bg: "#1a0b1e", glow: "rgba(255,77,109,.35)", text: "#ff4d6d" },
+    { name: "SUPER",      bg: "#1e120b", glow: "rgba(255,140,66,.4)",  text: "#ff8c42" },
+    { name: "HYPER",      bg: "#1e1a0b", glow: "rgba(255,216,77,.45)", text: "#ffd84d" },
+    { name: "GOD",        bg: "#0b1e14", glow: "rgba(125,255,122,.5)", text: "#7dff7a" },
+    { name: "GOD",        bg: "#0b141e", glow: "rgba(77,210,255,.55)", text: "#4dd2ff" },
+  ];
+  const tierOf = (c) => Math.min(TIERS.length - 1, Math.floor(c / CFG.tierSize));
+  const DIRS = {
+    up:    { dx: 0, dy: -1, arrow: "↑", color: "#ff4d6d" },
+    down:  { dx: 0, dy:  1, arrow: "↓", color: "#4dd2ff" },
+    left:  { dx: -1, dy: 0, arrow: "←", color: "#ffd84d" },
+    right: { dx: 1, dy:  0, arrow: "→", color: "#7dff7a" },
+  };
+  const DIR_KEYS = Object.keys(DIRS);
+  const SITE_URL = location.href.split("#")[0].split("?")[0];
+
+  // ====== 要素 ======
+  const $ = (id) => document.getElementById(id);
+  const cv = $("game"), ctx = cv.getContext("2d");
+  const hud = $("hud"), scoreEl = $("score"), livesEl = $("lives"), comboEl = $("combo");
+  const titleEl = $("title"), resultEl = $("result"), toastEl = $("toast");
+
+  // ====== 自己ベスト（ブラウザに保存） ======
+  const BEST_KEY = "swipeReflexBest";
+  const loadBest = () => { try { return Number(localStorage.getItem(BEST_KEY) || 0); } catch (e) { return 0; } };
+  const saveBest = (v) => { try { localStorage.setItem(BEST_KEY, String(v)); } catch (e) {} };
+  let best = loadBest();
+  const bestText = () => best > 0 ? `自己ベスト：${best}点（${rankOf(best).r}ランク）` : "まだ記録なし";
+  $("titleBest").textContent = bestText();
+
+  // ====== 効果音（音声ファイルなし。その場で音を作る） ======
+  const MUTE_KEY = "swipeReflexMute";
+  let muted = false;
+  try { muted = localStorage.getItem(MUTE_KEY) === "1"; } catch (e) {}
+  let AC = null;
+  function audioInit() {
+    if (!AC) { try { AC = new (window.AudioContext || window.webkitAudioContext)(); } catch (e) { AC = null; } }
+    if (AC && AC.state === "suspended") AC.resume();
+  }
+  // 1音鳴らす：周波数、長さ、波形、音量、（終わりの周波数：スライド用）
+  function tone(freq, dur, type = "square", vol = 0.18, freqEnd = null, delay = 0) {
+    if (muted || !AC) return;
+    const t0 = AC.currentTime + delay;
+    const o = AC.createOscillator(), g = AC.createGain();
+    o.type = type; o.frequency.setValueAtTime(freq, t0);
+    if (freqEnd) o.frequency.exponentialRampToValueAtTime(freqEnd, t0 + dur);
+    g.gain.setValueAtTime(0.0001, t0);
+    g.gain.exponentialRampToValueAtTime(vol, t0 + 0.008);
+    g.gain.exponentialRampToValueAtTime(0.0001, t0 + dur);
+    o.connect(g).connect(AC.destination);
+    o.start(t0); o.stop(t0 + dur + 0.02);
+  }
+  function noise(dur, vol = 0.2) {
+    if (muted || !AC) return;
+    const n = AC.sampleRate * dur, buf = AC.createBuffer(1, n, AC.sampleRate), d = buf.getChannelData(0);
+    for (let i = 0; i < n; i++) d[i] = (Math.random() * 2 - 1) * (1 - i / n);
+    const s = AC.createBufferSource(), g = AC.createGain(), f = AC.createBiquadFilter();
+    f.type = "highpass"; f.frequency.value = 1500;
+    s.buffer = buf; g.gain.value = vol;
+    s.connect(f).connect(g).connect(AC.destination); s.start();
+  }
+  const SND = {
+    // 斬った：コンボが増えるほど音が高くなる（半音ずつ、2オクターブまで）
+    hit(c) {
+      const f = 440 * Math.pow(2, Math.min(c, 24) / 12);
+      tone(f, 0.09, "square", 0.14); tone(f * 2, 0.05, "triangle", 0.08); noise(0.05, 0.12);
+    },
+    miss() { tone(160, 0.3, "sawtooth", 0.2, 70); noise(0.15, 0.2); },
+    whiff() { tone(300, 0.06, "sine", 0.06, 200); },
+    tier(t) { // レベルアップのファンファーレ
+      const base = 523 * Math.pow(2, Math.min(t, 4) / 4);
+      [0, 4, 7, 12].forEach((s, i) => tone(base * Math.pow(2, s / 12), 0.16, "square", 0.14, null, i * 0.06));
+    },
+    over() { [392, 330, 262].forEach((f, i) => tone(f, 0.25, "triangle", 0.18, null, i * 0.18)); },
+    best() { [523, 659, 784, 1047, 1319].forEach((f, i) => tone(f, 0.16, "square", 0.14, null, i * 0.09)); },
+    rank(r) {
+      if (r === "S") [659, 784, 988, 1319, 1568].forEach((f, i) => tone(f, 0.22, "square", 0.14, null, 0.6 + i * 0.08));
+      else if (r === "A") [659, 880, 1109].forEach((f, i) => tone(f, 0.2, "square", 0.13, null, 0.6 + i * 0.1));
+      else tone(330, 0.25, "triangle", 0.12, null, 0.6);
+    },
+    click() { tone(880, 0.05, "sine", 0.08); },
+  };
+  // ====== BGM（その場で作るループ。コンボ段階が上がるとテンポが速く・派手になる） ======
+  const BGM = {
+    on: false, step: 0, next: 0, timer: null, vol: null,
+    // コード進行（各1小節）：Am → F → C → G の根音（Hz）
+    roots: [110, 87.31, 130.81, 98],
+    bpm() { return 128 + tier * 10; },
+    start() {
+      if (!AC || this.on) return;
+      this.on = true; this.step = 0; this.next = AC.currentTime + 0.05;
+      this.vol = AC.createGain(); this.vol.gain.value = muted ? 0 : 0.5; this.vol.connect(AC.destination);
+      this.timer = setInterval(() => this.tick(), 40);
+    },
+    stop() {
+      this.on = false; clearInterval(this.timer);
+      if (this.vol) { try { this.vol.gain.setTargetAtTime(0, AC.currentTime, 0.05); } catch (e) {} const v = this.vol; setTimeout(() => v.disconnect(), 300); this.vol = null; }
+    },
+    setMuted(m) { if (this.vol) this.vol.gain.setTargetAtTime(m ? 0 : 0.5, AC.currentTime, 0.02); },
+    tick() {
+      // 少し先まで音を予約しておく（ブレないように）
+      while (this.next < AC.currentTime + 0.12) { this.play(this.step, this.next); this.next += 60 / this.bpm() / 4; this.step = (this.step + 1) % 64; }
+    },
+    v(freq, dur, type, vol, t, freqEnd) {
+      const o = AC.createOscillator(), g = AC.createGain();
+      o.type = type; o.frequency.setValueAtTime(freq, t);
+      if (freqEnd) o.frequency.exponentialRampToValueAtTime(freqEnd, t + dur);
+      g.gain.setValueAtTime(0.0001, t); g.gain.exponentialRampToValueAtTime(vol, t + 0.01); g.gain.exponentialRampToValueAtTime(0.0001, t + dur);
+      o.connect(g).connect(this.vol); o.start(t); o.stop(t + dur + 0.02);
+    },
+    hat(t, vol) {
+      const n = Math.floor(AC.sampleRate * 0.04), buf = AC.createBuffer(1, n, AC.sampleRate), d = buf.getChannelData(0);
+      for (let i = 0; i < n; i++) d[i] = (Math.random() * 2 - 1) * (1 - i / n);
+      const s = AC.createBufferSource(), g = AC.createGain(), f = AC.createBiquadFilter();
+      f.type = "highpass"; f.frequency.value = 6000; s.buffer = buf; g.gain.value = vol;
+      s.connect(f).connect(g).connect(this.vol); s.start(t);
+    },
+    play(step, t) {
+      const bar = Math.floor(step / 16) % 4, s = step % 16, root = this.roots[bar];
+      // キック：4つ打ち
+      if (s % 4 === 0) this.v(150, 0.18, "sine", 0.9, t, 45);
+      // ハイハット：普段は裏拍、SUPER以上で毎ステップ
+      if (s % 4 === 2) this.hat(t, 0.25); else if (tier >= 2 && s % 2 === 0) this.hat(t, 0.12);
+      // ベース：8分で根音とオクターブ上を行き来
+      if (s % 2 === 0) this.v(s % 4 === 0 ? root : root * 2, 0.16, "square", 0.16, t);
+      // FEVER以上：上でアルペジオ（根音・3度・5度・オクターブ）
+      if (tier >= 1) { const arp = [1, 1.2, 1.5, 2]; this.v(root * 4 * arp[s % 4] * (tier >= 3 ? 2 : 1), 0.1, "triangle", 0.12, t); }
+      // HYPER以上：さらにキラキラ
+      if (tier >= 3 && s % 8 === 4) this.v(root * 8, 0.3, "sine", 0.08, t, root * 16);
+    },
+  };
+
+  const muteBtn = $("muteBtn");
+  function drawMute() { muteBtn.textContent = muted ? "🔇" : "🔊"; }
+  muteBtn.addEventListener("click", (e) => {
+    e.stopPropagation();
+    muted = !muted; drawMute();
+    try { localStorage.setItem(MUTE_KEY, muted ? "1" : "0"); } catch (e2) {}
+    if (!muted) { audioInit(); SND.click(); }
+    if (AC) BGM.setMuted(muted);
+  });
+  drawMute();
+
+  // ====== 画面サイズ ======
+  let W = 0, H = 0, DPR = 1;
+  function resize() {
+    DPR = Math.min(window.devicePixelRatio || 1, 2);
+    W = window.innerWidth; H = window.innerHeight;
+    cv.width = W * DPR; cv.height = H * DPR;
+    cv.style.width = W + "px"; cv.style.height = H + "px";
+    ctx.setTransform(DPR, 0, 0, DPR, 0, 0);
+  }
+  window.addEventListener("resize", resize);
+  resize();
+
+  // ====== ゲーム状態 ======
+  let state = "title"; // title / play / result
+  let objs = [], particles = [], floats = [];
+  let score = 0, hits = 0, lives = 0, combo = 0, maxCombo = 0;
+  let speed = 0, interval = 0, spawnTimer = 0, shake = 0, flash = 0, lastT = 0;
+  let tier = 0, hitStop = 0, flashColor = "255,77,109", bgT = 0;
+
+  function setTier(t, announce) {
+    tier = t;
+    const T = TIERS[t];
+    document.body.style.setProperty("--glow", T.glow);
+    document.body.classList.toggle("fever", t > 0);
+    const b = $("tierBanner");
+    if (announce && t > 0) {
+      b.innerHTML = T.name + "<small>スコア×" + (t + 1) + "</small>";
+      b.style.color = T.text;
+      b.classList.add("show");
+      clearTimeout(setTier.t);
+      setTier.t = setTimeout(() => b.classList.remove("show"), 900);
+      SND.tier(t);
+      vibrate([30, 30, 30, 30, 90]);
+      flashColor = "255,255,255"; flash = 0.25;
+      hitStop = 0.12;
+      burst(W / 2, H / 2, T.text, 40);
+    } else if (!announce) b.classList.remove("show");
+  }
+
+  function rankOf(s) { return CFG.ranks.find(r => s >= r.min); }
+  function rand(a, b) { return a + Math.random() * (b - a); }
+
+  function start() {
+    objs = []; particles = []; floats = [];
+    score = 0; hits = 0; lives = CFG.lives; combo = 0; maxCombo = 0;
+    speed = CFG.baseSpeed; interval = CFG.baseInterval; spawnTimer = 0.5; shake = 0; flash = 0; hitStop = 0;
+    audioInit(); SND.click();
+    setTier(0, false);
+    state = "play";
+    BGM.start();
+    titleEl.hidden = true; resultEl.hidden = true; hud.hidden = false;
+    updateHud();
+    lastT = performance.now();
+    requestAnimationFrame(loop);
+  }
+
+  function updateHud() {
+    scoreEl.firstChild.nodeValue = score;
+    livesEl.textContent = "♥".repeat(lives) + "♡".repeat(CFG.lives - lives);
+  }
+
+  // マトを出す：画面の端から真ん中に向かって飛んでくる
+  function spawn() {
+    const cx = W / 2, cy = H / 2;
+    const edge = Math.floor(rand(0, 4)); // 0上 1右 2下 3左
+    let x, y;
+    const m = 40;
+    if (edge === 0) { x = rand(m, W - m); y = -m; }
+    else if (edge === 1) { x = W + m; y = rand(m + 80, H - m); }
+    else if (edge === 2) { x = rand(m, W - m); y = H + m; }
+    else { x = -m; y = rand(m + 80, H - m); }
+    const ang = Math.atan2(cy - y, cx - x);
+    const dir = DIR_KEYS[Math.floor(rand(0, 4))];
+    const sp = speed * rand(0.9, 1.15);
+    objs.push({ x, y, vx: Math.cos(ang) * sp, vy: Math.sin(ang) * sp, dir, r: Math.min(W, H) * 0.075, born: 0, rot: rand(0, 6.28), spin: rand(-2, 2) });
+  }
+
+  function loop(now) {
+    if (state !== "play") return;
+    const dt = Math.min((now - lastT) / 1000, 0.05);
+    lastT = now;
+    update(dt);
+    draw();
+    requestAnimationFrame(loop);
+  }
+
+  function update(dt) {
+    bgT += dt;
+    // ヒットストップ：気持ちいい一瞬の止まり
+    if (hitStop > 0) { hitStop -= dt; dt *= 0.15; }
+    spawnTimer -= dt;
+    if (spawnTimer <= 0) { spawn(); spawnTimer = interval; }
+    const cx = W / 2, cy = H / 2;
+    for (const o of objs) {
+      o.x += o.vx * dt; o.y += o.vy * dt; o.born += dt; o.rot += o.spin * dt;
+      // 真ん中に到達 → ミス
+      if (Math.hypot(o.x - cx, o.y - cy) < o.r * 0.6) o.dead = "miss";
+    }
+    const missed = objs.filter(o => o.dead === "miss");
+    if (missed.length) {
+      lives -= missed.length; combo = 0; shake = 14; flash = 0.35; flashColor = "255,77,109";
+      SND.miss(); vibrate([60, 40, 60]);
+      showFloat(cx, cy - 60, "MISS", "#ff4d6d");
+      if (tier > 0) setTier(0, false);
+      showCombo();
+      for (const o of missed) burst(o.x, o.y, "#ffffff", 10);
+      updateHud();
+      if (lives <= 0) { lives = 0; updateHud(); return finish(); }
+    }
+    objs = objs.filter(o => !o.dead);
+    for (const p of particles) { p.x += p.vx * dt; p.y += p.vy * dt; p.vy += 600 * dt; p.life -= dt; }
+    particles = particles.filter(p => p.life > 0);
+    for (const f of floats) { f.y -= 60 * dt; f.life -= dt; }
+    floats = floats.filter(f => f.life > 0);
+    if (shake > 0) shake = Math.max(0, shake - 60 * dt);
+    if (flash > 0) flash = Math.max(0, flash - dt);
+  }
+
+  function onSwipe(dir) {
+    if (state !== "play") return;
+    // その方向のマトの中で、真ん中に一番近いものを斬る
+    const cx = W / 2, cy = H / 2;
+    let target = null, td = Infinity;
+    for (const o of objs) {
+      if (o.dir !== dir || o.dead) continue;
+      const d = Math.hypot(o.x - cx, o.y - cy);
+      if (d < td) { td = d; target = o; }
+    }
+    if (!target) {
+      // 空振り：コンボが切れるだけ
+      // 空振り：コンボが切れるだけ（ライフは減らない）
+      if (combo > 0) showFloat(cx, cy - 40, "空振り", "#9aa3b8");
+      combo = 0; showCombo();
+      if (tier > 0) setTier(0, false);
+      SND.whiff(); vibrate(20);
+      return;
+    }
+    target.dead = "hit";
+    hits++; combo++; maxCombo = Math.max(maxCombo, combo);
+    // 早く斬るほど高得点（真ん中から遠いほど＋）、コンボ段階で倍率アップ
+    const dist = Math.hypot(target.x - cx, target.y - cy);
+    const far = Math.min(1, dist / (Math.min(W, H) * 0.45));
+    const base = 1 + Math.round(far * 2);
+    const gain = base * (tier + 1);
+    score += gain;
+    speed += CFG.speedGain;
+    interval = Math.max(CFG.minInterval, interval - CFG.intervalGain);
+    burst(target.x, target.y, DIRS[dir].color, 18 + tier * 8);
+    showFloat(target.x, target.y, "+" + gain, DIRS[dir].color);
+    SND.hit(combo);
+    vibrate(15 + tier * 5);
+    if (tier > 0) hitStop = 0.03;
+    const nt = tierOf(combo);
+    if (nt !== tier) setTier(nt, true);
+    showCombo();
+    updateHud();
+    objs = objs.filter(o => !o.dead);
+  }
+
+  function showCombo() {
+    if (combo >= 3) {
+      comboEl.textContent = combo + " COMBO";
+      comboEl.style.color = TIERS[tier].text;
+      // コンボが増えるほど文字がデカくなる
+      comboEl.style.setProperty("--cs", (1 + Math.min(combo, 50) / 50).toFixed(2));
+      comboEl.classList.add("show");
+      clearTimeout(showCombo.t);
+      showCombo.t = setTimeout(() => comboEl.classList.remove("show"), 500);
+    } else comboEl.classList.remove("show");
+  }
+  function showFloat(x, y, text, color) { floats.push({ x, y, text, color, life: 0.7 }); }
+  function burst(x, y, color, n) {
+    for (let i = 0; i < n; i++) {
+      const a = rand(0, Math.PI * 2), s = rand(120, 420);
+      particles.push({ x, y, vx: Math.cos(a) * s, vy: Math.sin(a) * s, life: rand(0.3, 0.7), color, size: rand(3, 7) });
+    }
+  }
+  function vibrate(p) { try { navigator.vibrate && navigator.vibrate(p); } catch (e) {} }
+
+  // ====== 描画 ======
+  function draw() {
+    ctx.save();
+    ctx.clearRect(0, 0, W, H);
+    const cx = W / 2, cy = H / 2;
+    // 背景：コンボ段階で色が変わる
+    if (tier > 0) {
+      const T = TIERS[tier];
+      const g = ctx.createRadialGradient(cx, cy, 0, cx, cy, Math.max(W, H) * 0.8);
+      g.addColorStop(0, T.bg); g.addColorStop(1, "#0b0f1a");
+      ctx.fillStyle = g; ctx.fillRect(0, 0, W, H);
+      // 集中線（段階が上がるほど多く・速く）
+      ctx.save();
+      ctx.translate(cx, cy);
+      ctx.globalAlpha = 0.08 + tier * 0.04;
+      ctx.strokeStyle = T.text; ctx.lineWidth = 2;
+      const n = 10 + tier * 8, R0 = Math.min(W, H) * 0.25, R1 = Math.max(W, H);
+      for (let i = 0; i < n; i++) {
+        const a = (i / n) * Math.PI * 2 + bgT * (0.6 + tier * 0.4) + Math.sin(i * 7.3) * 0.3;
+        ctx.beginPath(); ctx.moveTo(Math.cos(a) * R0, Math.sin(a) * R0);
+        ctx.lineTo(Math.cos(a) * R1, Math.sin(a) * R1); ctx.stroke();
+      }
+      ctx.restore();
+    }
+    if (shake > 0) ctx.translate(rand(-shake, shake), rand(-shake, shake));
+    // 真ん中の的
+    const R = Math.min(W, H) * 0.09;
+    ctx.beginPath(); ctx.arc(cx, cy, R, 0, Math.PI * 2);
+    ctx.strokeStyle = "rgba(255,255,255,.18)"; ctx.lineWidth = 2; ctx.stroke();
+    ctx.beginPath(); ctx.arc(cx, cy, R * 0.35, 0, Math.PI * 2);
+    ctx.fillStyle = "rgba(255,255,255,.12)"; ctx.fill();
+    // マト
+    for (const o of objs) {
+      const d = DIRS[o.dir];
+      const grow = Math.min(1, o.born * 6);
+      const r = o.r * grow;
+      ctx.save();
+      ctx.translate(o.x, o.y);
+      ctx.shadowColor = d.color; ctx.shadowBlur = 22;
+      ctx.beginPath(); ctx.arc(0, 0, r, 0, Math.PI * 2);
+      ctx.fillStyle = d.color; ctx.fill();
+      ctx.shadowBlur = 0;
+      ctx.fillStyle = "#0b0f1a";
+      ctx.font = `900 ${r * 1.35}px -apple-system,BlinkMacSystemFont,"Helvetica Neue",sans-serif`;
+      ctx.textAlign = "center"; ctx.textBaseline = "middle";
+      ctx.fillText(d.arrow, 0, r * 0.06);
+      ctx.restore();
+    }
+    // パーティクル
+    for (const p of particles) {
+      ctx.globalAlpha = Math.max(0, p.life / 0.7);
+      ctx.fillStyle = p.color;
+      ctx.fillRect(p.x - p.size / 2, p.y - p.size / 2, p.size, p.size);
+    }
+    ctx.globalAlpha = 1;
+    // 浮かぶ文字
+    for (const f of floats) {
+      ctx.globalAlpha = Math.max(0, f.life / 0.7);
+      ctx.fillStyle = f.color; ctx.font = "900 26px sans-serif";
+      ctx.textAlign = "center"; ctx.textBaseline = "middle";
+      ctx.fillText(f.text, f.x, f.y);
+    }
+    ctx.globalAlpha = 1;
+    ctx.restore();
+    if (flash > 0) {
+      ctx.fillStyle = `rgba(${flashColor},${flash * 0.6})`;
+      ctx.fillRect(0, 0, W, H);
+    }
+  }
+
+  // ====== 結果 ======
+  function finish() {
+    state = "result";
+    BGM.stop();
+    hud.hidden = true; comboEl.classList.remove("show");
+    setTier(0, false);
+    objs = []; floats = []; particles = []; shake = 0; flash = 0;
+    draw();
+    SND.over();
+    const rk = rankOf(score);
+    const rankEl = $("rank");
+    rankEl.textContent = rk.r; rankEl.className = "rank " + rk.r;
+    $("comment").textContent = rk.c;
+    $("rHits").textContent = hits;
+    $("rCombo").textContent = maxCombo;
+    const isNew = score > best;
+    if (isNew) { best = score; saveBest(best); }
+    $("newBest").hidden = true;
+    $("resultBest").textContent = bestText();
+    $("titleBest").textContent = bestText();
+    resultEl.hidden = false;
+    vibrate(80);
+    // スコアをカウントアップして見せる
+    const el = $("rScore"); const t0 = performance.now(); const dur = Math.min(1200, 300 + score * 6);
+    (function tick(now) {
+      const p = Math.min(1, (now - t0) / dur);
+      el.textContent = Math.round(score * (1 - Math.pow(1 - p, 3)));
+      if (p < 1) requestAnimationFrame(tick);
+      else {
+        SND.rank(rk.r);
+        if (isNew) { $("newBest").hidden = false; setTimeout(() => { SND.best(); vibrate([80, 40, 80, 40, 160]); }, 500); }
+        if (rk.r === "S" || rk.r === "A") confetti();
+      }
+    })(t0);
+  }
+  // 紙吹雪（結果画面の上に降る）
+  function confetti() {
+    const colors = ["#ff4d6d", "#4dd2ff", "#ffd84d", "#7dff7a", "#ffffff"];
+    for (let i = 0; i < 120; i++) {
+      particles.push({ x: rand(0, W), y: rand(-H * 0.3, 0), vx: rand(-40, 40), vy: rand(80, 220),
+        life: rand(1.5, 3), color: colors[i % colors.length], size: rand(5, 10), conf: true });
+    }
+    const t1 = performance.now();
+    (function anim(now) {
+      const dt = 1 / 60;
+      for (const p of particles) { p.x += p.vx * dt + Math.sin(now / 200 + p.size) * 0.8; p.y += p.vy * dt; p.life -= dt; }
+      particles = particles.filter(p => p.life > 0);
+      draw();
+      if (state === "result" && particles.length && now - t1 < 4000) requestAnimationFrame(anim);
+    })(t1);
+  }
+
+  function shareText() {
+    const rk = rankOf(score);
+    return `【スワイプ反射】${score}点で ${rk.r}ランク！「${rk.c}」\n斬った数 ${hits} / 最大 ${maxCombo} コンボ\nお前もやってみろ👇`;
+  }
+  function toast(msg) {
+    toastEl.textContent = msg; toastEl.classList.add("show");
+    clearTimeout(toast.t); toast.t = setTimeout(() => toastEl.classList.remove("show"), 1600);
+  }
+  $("shareBtn").addEventListener("click", async () => {
+    const text = shareText();
+    if (navigator.share) {
+      try { await navigator.share({ title: "スワイプ反射", text, url: SITE_URL }); return; } catch (e) { /* キャンセル */ return; }
+    }
+    try { await navigator.clipboard.writeText(text + "\n" + SITE_URL); toast("結果をコピーしました"); }
+    catch (e) { toast("コピーできませんでした"); }
+  });
+  $("xBtn").addEventListener("click", () => {
+    const u = "https://twitter.com/intent/tweet?text=" + encodeURIComponent(shareText()) + "&url=" + encodeURIComponent(SITE_URL) + "&hashtags=" + encodeURIComponent("スワイプ反射");
+    window.open(u, "_blank", "noopener");
+  });
+  $("startBtn").addEventListener("click", start);
+  $("retryBtn").addEventListener("click", start);
+
+  // ====== スワイプ判定 ======
+  let sx = 0, sy = 0, sw = false;
+  function down(x, y) { sx = x; sy = y; sw = true; }
+  function move(x, y) {
+    if (!sw) return;
+    const dx = x - sx, dy = y - sy;
+    if (Math.abs(dx) < CFG.swipeMin && Math.abs(dy) < CFG.swipeMin) return;
+    sw = false; // 1回のスワイプで1回だけ
+    if (Math.abs(dx) > Math.abs(dy)) onSwipe(dx > 0 ? "right" : "left");
+    else onSwipe(dy > 0 ? "down" : "up");
+  }
+  cv.addEventListener("pointerdown", e => { down(e.clientX, e.clientY); });
+  cv.addEventListener("pointermove", e => { move(e.clientX, e.clientY); });
+  cv.addEventListener("pointerup", () => { sw = false; });
+  cv.addEventListener("pointercancel", () => { sw = false; });
+  // 指が複数でも動くように touch も拾う（pointer が来ない端末用）
+  cv.addEventListener("touchstart", e => { e.preventDefault(); }, { passive: false });
+  cv.addEventListener("touchmove", e => { e.preventDefault(); }, { passive: false });
+  // PCでの確認用：矢印キー
+  window.addEventListener("keydown", e => {
+    const m = { ArrowUp: "up", ArrowDown: "down", ArrowLeft: "left", ArrowRight: "right" };
+    if (m[e.key]) { e.preventDefault(); onSwipe(m[e.key]); }
+    else if ((e.key === " " || e.key === "Enter") && state !== "play") start();
+  });
+
+  draw();
+})();
+</script>
+</body>
+</html>
